@@ -49,6 +49,23 @@ tr.gap-bad{background:#fef2f2}tr.gap-bad:hover{background:#fee2e2}
 .items-table th{font-size:9px;padding:6px 10px}.items-table td{padding:6px 10px;border-bottom:1px solid #f1f5f9}
 .close-btn{float:right;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;color:#64748b}
 .close-btn:hover{background:#e2e8f0}
+.cal{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto;margin-bottom:16px}
+.cal table{width:100%;border-collapse:collapse;font-size:11px;min-width:900px}
+.cal th{background:#f8fafc;padding:6px 4px;font-size:9px;text-transform:uppercase;letter-spacing:.3px;color:#64748b;border-bottom:1px solid #e2e8f0;text-align:center;position:sticky;top:0;white-space:nowrap}
+.cal th:first-child{text-align:left;padding-left:12px;min-width:140px;position:sticky;left:0;background:#f8fafc;z-index:2}
+.cal td{padding:4px;border-bottom:1px solid #f8fafc;text-align:center;white-space:nowrap}
+.cal td:first-child{text-align:left;padding-left:12px;font-weight:600;font-size:11px;position:sticky;left:0;background:#fff;z-index:1}
+.cal tr:hover td{background:#fafbfc}
+.cal tr:hover td:first-child{background:#fafbfc}
+.cal .cell{border-radius:4px;padding:2px 4px;font-size:9px;font-weight:600;display:inline-block;min-width:50px}
+.cal .cell-bad{background:#fee2e2;color:#991b1b}
+.cal .cell-ok{background:#d1fae5;color:#065f46}
+.cal .cell-zero{background:#f8fafc;color:#cbd5e1}
+.cal .cell-warn{background:#fef3c7;color:#92400e}
+.cal .row-total td{font-weight:800;background:#f1f5f9!important;border-top:2px solid #e2e8f0}
+.cal-tabs{display:flex;gap:4px;margin-bottom:10px}
+.cal-tab{padding:6px 14px;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:#64748b;font-family:inherit}
+.cal-tab:hover{background:#f8fafc}.cal-tab.active{background:#4f46e5;color:#fff;border-color:#4f46e5}
 </style>
 </head>
 <body>
@@ -70,6 +87,7 @@ tr.gap-bad{background:#fef2f2}tr.gap-bad:hover{background:#fee2e2}
   <button class="fbtn" onclick="setFilter('ok')">✅ Positivos</button>
   <button class="fbtn" onclick="setFilter('internal')">🏢 Interno</button>
 </div>
+<div id="calendarView" style="margin-bottom:20px"></div>
 <div id="detail"></div>
 <div style="overflow-x:auto"><table><thead><tr>
   <th onclick="sortCol('name')">Cliente ↕</th>
@@ -199,6 +217,95 @@ function showDetail(name){
   el.scrollIntoView({behavior:'smooth'});
 }
 
+var _calView='gap'; // gap, custo, receita
+function setCalView(v){_calView=v;document.querySelectorAll('.cal-tab').forEach(function(b){b.classList.toggle('active',b.dataset.v===v)});renderCalendar()}
+
+function renderCalendar(){
+  var el=document.getElementById('calendarView');
+  var q=(document.getElementById('search').value||'').toLowerCase();
+  var list=DATA.filter(function(d){
+    if(q&&d.cliente.toLowerCase().indexOf(q)===-1)return false;
+    if(_filter==='gap')return d.gap<-1000;
+    if(_filter==='ok')return d.gap>0;
+    if(_filter==='internal')return d.cliente.match(/Licen|Mutant|Interaxa/i);
+    return true;
+  });
+
+  // All months
+  var allMonths=new Set();
+  DATA.forEach(function(d){Object.keys(d.monthly).forEach(function(m){allMonths.add(m)})});
+  var months=Array.from(allMonths).sort();
+
+  // Header
+  var html='<div class="cal-tabs">';
+  html+='<cal-tab style="font-size:12px;font-weight:700;color:#1e293b;padding:6px 0;margin-right:8px">Calendarização:</span>';
+  html+='<button class="cal-tab'+(_calView==='gap'?' active':'')+'" data-v="gap" onclick="setCalView(\'gap\')">Gap (R-C)</button>';
+  html+='<button class="cal-tab'+(_calView==='custo'?' active':'')+'" data-v="custo" onclick="setCalView(\'custo\')">Custo</button>';
+  html+='<button class="cal-tab'+(_calView==='receita'?' active':'')+'" data-v="receita" onclick="setCalView(\'receita\')">Receita</button>';
+  html+='</div>';
+
+  html+='<div class="cal"><table><thead><tr><th>Cliente</th>';
+  months.forEach(function(m){
+    var parts=m.split('-');
+    html+='<th>'+parts[1]+'/'+parts[0].slice(2)+'</th>';
+  });
+  html+='<th style="background:#eef2ff">TOTAL</th></tr></thead><tbody>';
+
+  // Sort by total gap
+  list.sort(function(a,b){return a.gap-b.gap});
+
+  // Totals row data
+  var colTotals={};months.forEach(function(m){colTotals[m]=0});
+  var grandTotal=0;
+
+  list.forEach(function(d){
+    html+='<tr><td><span class="client-name" onclick="showDetail(\''+d.cliente+'\')">'+d.cliente+'</span></td>';
+    var rowTotal=0;
+    months.forEach(function(m){
+      var md=d.monthly[m];
+      var val=0;
+      if(md){
+        if(_calView==='gap')val=md.receita-md.custo;
+        else if(_calView==='custo')val=md.custo;
+        else val=md.receita;
+      }
+      colTotals[m]+=val;
+      rowTotal+=val;
+
+      var cls='cell-zero';
+      if(_calView==='gap'){
+        if(val<-1000)cls='cell-bad';else if(val>0)cls='cell-ok';else if(val<0)cls='cell-warn';
+      } else if(_calView==='custo'){
+        if(val>10000)cls='cell-bad';else if(val>0)cls='cell-warn';
+      } else {
+        if(val>0)cls='cell-ok';
+      }
+      var display=val===0?'—':fmtK(val);
+      html+='<td><span class="cell '+cls+'">'+display+'</span></td>';
+    });
+    grandTotal+=rowTotal;
+    var tCls=rowTotal<0?'cell-bad':'cell-ok';
+    html+='<td><span class="cell '+tCls+'" style="font-size:10px">'+fmtK(rowTotal)+'</span></td>';
+    html+='</tr>';
+  });
+
+  // Totals row
+  html+='<tr class="row-total"><td>TOTAL</td>';
+  months.forEach(function(m){
+    var v=colTotals[m];
+    var cls=v<0?'cell-bad':(v>0?'cell-ok':'cell-zero');
+    html+='<td><span class="cell '+cls+'" style="font-size:10px">'+fmtK(v)+'</span></td>';
+  });
+  var gCls=grandTotal<0?'cell-bad':'cell-ok';
+  html+='<td><span class="cell '+gCls+'" style="font-size:11px;font-weight:800">'+fmtK(grandTotal)+'</span></td>';
+  html+='</tr></tbody></table></div>';
+
+  el.innerHTML=html;
+}
+
+// Hook calendar into render
+var _origRender=render;
+render=function(){_origRender();renderCalendar()};
 render();
 </script>
 </body>
